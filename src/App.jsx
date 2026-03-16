@@ -1,86 +1,112 @@
-import { useMemo, useState } from "react";
-import "./App.css";
-import ControlPanel from "./components/ControlPanel";
-import HumanBody from "./components/HumanBody";
-import ResultPanel from "./components/ResultPanel";
-import simulateResult from "./engine/simulateResult";
-import {
-  bodyParts,
-  tissueLayers,
-  mechanisms,
-  interventions,
-} from "./data/options";
+import { useMemo, useState } from 'react';
+import './App.css';
+import HeaderSummary from './components/HeaderSummary';
+import HumanBodyCanvas from './components/HumanBodyCanvas';
+import PatientAdvicePanel from './components/PatientAdvicePanel';
+import DoctorSummaryPanel from './components/DoctorSummaryPanel';
+import RecoveryTrendPanel from './components/RecoveryTrendPanel';
+import ExplainabilityPanel from './components/ExplainabilityPanel';
+import InputPanel from './components/intake/InputPanel';
+import assessCase from './engine/assessCase';
+import { anatomyRegistry, regionOptions } from './data/anatomy/bodyRegions';
+
+function getDefaultLandmark(region) {
+  const regionData = anatomyRegistry[region];
+  return regionData?.defaultLandmark || Object.keys(regionData?.landmarks || {})[0] || '';
+}
+
+function getDefaultDirection(region, landmark) {
+  const regionData = anatomyRegistry[region];
+  return regionData?.landmarks?.[landmark]?.directions?.[0] || '';
+}
+
+function toggleItem(list = [], value, fallback) {
+  const exists = list.includes(value);
+  const next = exists ? list.filter((item) => item !== value) : [...list, value];
+  if (next.length === 0 && fallback) return [fallback];
+  return next;
+}
 
 export default function App() {
-  const [selectedPart, setSelectedPart] = useState("膝部");
-  const [selectedLayer, setSelectedLayer] = useState("骨");
-  const [selectedMechanism, setSelectedMechanism] = useState("骨折样损伤");
-  const [severity, setSeverity] = useState(3);
-  const [viewMode, setViewMode] = useState("front");
-  const [selectedInterventions, setSelectedInterventions] = useState(["观察"]);
+  const initialRegion = '膝部';
+  const initialLandmark = getDefaultLandmark(initialRegion);
+  const [viewMode, setViewMode] = useState('front');
+  const [intakeData, setIntakeData] = useState({
+    region: initialRegion,
+    side: '右',
+    onsetType: '突发',
+    onsetTime: '3天前',
+    traumaRelated: true,
+    landmark: initialLandmark,
+    direction: getDefaultDirection(initialRegion, initialLandmark),
+    distanceBand: '1-3cm',
+    depth: '深层',
+    painArea: '点状',
+    symptoms: ['压痛'],
+    aggravatingFactors: ['负重', '上下楼梯'],
+    relievingFactors: ['休息'],
+    functionLimits: ['下蹲受限'],
+    redFlags: [],
+    interventionsTried: ['观察'],
+  });
 
-  const result = useMemo(() => {
-    return simulateResult({
-      selectedPart,
-      selectedLayer,
-      selectedMechanism,
-      severity,
-      selectedInterventions,
-    });
-  }, [
-    selectedPart,
-    selectedLayer,
-    selectedMechanism,
-    severity,
-    selectedInterventions,
-  ]);
+  const currentRegionData = anatomyRegistry[intakeData.region];
+  const landmarkOptions = Object.keys(currentRegionData?.landmarks || {});
+  const directionOptions = currentRegionData?.landmarks?.[intakeData.landmark]?.directions || [];
+
+  const updateField = (field, value) => {
+    setIntakeData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const onRegionChange = (region) => {
+    const landmark = getDefaultLandmark(region);
+    const direction = getDefaultDirection(region, landmark);
+    setIntakeData((prev) => ({ ...prev, region, landmark, direction }));
+  };
+
+  const toggleArrayValue = (field, value) => {
+    setIntakeData((prev) => ({
+      ...prev,
+      [field]: toggleItem(prev[field], value, field === 'interventionsTried' ? '观察' : undefined),
+    }));
+  };
+
+  const assessment = useMemo(() => assessCase(intakeData), [intakeData]);
 
   return (
     <div className="app-shell">
       <div className="app-container">
-        <header className="hero">
-          <h1 className="hero-title">人体创伤后果模拟器</h1>
-          <p className="hero-subtitle">
-            更细分的人体区域、干预方式、恢复趋势与风险解释展示版。
-          </p>
+        <HeaderSummary assessment={assessment} />
 
-          <div className="hero-badges">
-            <span className="hero-badge">更细人体分区</span>
-            <span className="hero-badge">干预方式模拟</span>
-            <span className="hero-badge">2周 / 6周恢复趋势</span>
-            <span className="hero-badge">更真实人体 SVG</span>
+        <main className="main-grid">
+          <InputPanel
+            intakeData={intakeData}
+            updateField={updateField}
+            regionOptions={regionOptions}
+            landmarkOptions={landmarkOptions}
+            directionOptions={directionOptions}
+            onRegionChange={onRegionChange}
+            toggleArrayValue={toggleArrayValue}
+            traumaToggle={() => updateField('traumaRelated', !intakeData.traumaRelated)}
+          />
+
+          <div className="center-column">
+            <HumanBodyCanvas
+              selectedRegion={intakeData.region}
+              onRegionChange={onRegionChange}
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+              landmarkOptions={landmarkOptions}
+              intakeData={intakeData}
+            />
+            <ExplainabilityPanel explainability={assessment.explainability} triageResult={assessment.triageResult} referralResult={assessment.referralResult} />
           </div>
-        </header>
 
-        <main className="layout-grid">
-          <ControlPanel
-            bodyParts={bodyParts}
-            selectedPart={selectedPart}
-            setSelectedPart={setSelectedPart}
-            tissueLayers={tissueLayers}
-            selectedLayer={selectedLayer}
-            setSelectedLayer={setSelectedLayer}
-            mechanisms={mechanisms}
-            selectedMechanism={selectedMechanism}
-            setSelectedMechanism={setSelectedMechanism}
-            severity={severity}
-            setSeverity={setSeverity}
-            interventions={interventions}
-            selectedInterventions={selectedInterventions}
-            setSelectedInterventions={setSelectedInterventions}
-            result={result}
-          />
-
-          <HumanBody
-            selectedPart={selectedPart}
-            setSelectedPart={setSelectedPart}
-            selectedLayer={selectedLayer}
-            selectedMechanism={selectedMechanism}
-            viewMode={viewMode}
-            setViewMode={setViewMode}
-          />
-
-          <ResultPanel result={result} />
+          <div className="right-column">
+            <PatientAdvicePanel patientAdvice={assessment.patientAdvice} />
+            <DoctorSummaryPanel doctorSummary={assessment.doctorSummary} />
+            <RecoveryTrendPanel recoveryData={assessment.recoveryData} recoveryHighlights={assessment.recoveryHighlights} />
+          </div>
         </main>
       </div>
     </div>
